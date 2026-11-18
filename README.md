@@ -14,6 +14,11 @@ four times the 0.0191 of a random ranking. DIN without the cross tower reaches
 0.7412 / 0.0779: in these single-seed runs the cross tower adds no measurable
 gain.
 
+**Scope.** One random, non-temporal validation split with one seed; no
+leaderboard or online test, and ROC-AUC gaps near 0.001 are noise. Data and
+checkpoints not included; `results/*_meta.json` holds each run's metrics, and
+`python src\train.py --help` lists the CLI options.
+
 [한국어](README.ko.md) · [Case study](PORTFOLIO.md) · [Architecture](docs/ARCHITECTURE.md)
 
 ## Approach

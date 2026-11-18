@@ -6,6 +6,8 @@
 
 **결과.** 층화 85/15 검증 분할(seed 42, 설정별 1회 실행)에서 DCN-V2 + DIEN은 ROC-AUC 0.7413, PR-AUC 0.0792를 기록했습니다. 무작위 순위의 0.0191보다 약 4배 높습니다. cross 타워 없는 DIN도 0.7412 / 0.0779여서, 이번 단일 seed 실행에서는 cross 타워의 이득이 확인되지 않았습니다.
 
+**범위.** 시간순이 아닌 무작위 검증 분할 하나와 seed 하나의 결과이며, 리더보드나 온라인 테스트는 없고 0.001 안팎의 ROC-AUC 차이는 잡음 수준입니다. 데이터와 체크포인트는 포함되어 있지 않습니다. 실행별 지표는 `results/*_meta.json`에 있고, `python src\train.py --help`로 CLI 옵션을 확인할 수 있습니다.
+
 [English](README.md) · [사례 연구](PORTFOLIO.ko.md) · [아키텍처](docs/ARCHITECTURE.md)
 
 ## 접근 방식
