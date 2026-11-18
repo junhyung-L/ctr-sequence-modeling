@@ -1,20 +1,32 @@
-# CTR Prediction with DCN-V2 and Sequence Interest Models
+# CTR Prediction with DCN-V2 and Behaviour-Sequence Encoders
 
-[한국어](README.ko.md)
+[한국어](README.ko.md) · [Case study](PORTFOLIO.md)
 
-> [Project details](PORTFOLIO.md)
+Predicts whether a user clicks an advertisement from 117 tabular features plus
+the user's recent behaviour sequence, by attaching interchangeable DIN, DIEN,
+or BST sequence encoders to a DCN-V2-style cross/deep network.
 
-This repository investigates click-through-rate (CTR) prediction using tabular
-features and behavioural sequences. It combines a DCN-V2-style cross/deep
-network with DIN, DIEN, or BST sequence backbones, while retaining compact
-metadata from several experimental runs.
+**Why it matters.** Clicks are rare: 204,179 of 10,704,179 training rows
+(about 1.91%) are positive, so accuracy says little and the useful question is
+how well a model ranks the few rows that will be clicked. That ranking decides
+which impressions are worth serving.
+
+**Result.** DCN-V2 + DIEN reached validation ROC-AUC 0.7413 and PR-AUC 0.0792
+(stratified 85/15 split, seed 42, one run per configuration). The PR-AUC is
+about four times the 0.0191 a random ranking would score at this click rate. A
+DIN model without the cross tower reached 0.7412 / 0.0779, so in these
+single-seed runs the cross tower shows no clear gain; the sequence encoder
+carries most of the signal.
+
+These are saved validation metrics, not leaderboard or external-test scores.
+The raw data is not included.
 
 ## Problem
 
 Given user, inventory, temporal, and historical-sequence features, estimate
-the probability of an advertisement click. The provided training pipeline
-addresses class imbalance with a weighted binary cross-entropy loss and ranks
-models using ROC-AUC and PR-AUC.
+the probability of an advertisement click. The training pipeline handles class
+imbalance with a weighted binary cross-entropy loss and compares models by
+ROC-AUC and PR-AUC on a validation split that keeps the original click rate.
 
 ## Analysis flow
 
@@ -40,46 +52,53 @@ flowchart LR
   a selectable DIN, DIEN, or BST interest encoder.
 - **Training:** a stratified 85/15 train/validation split uses seed 42,
   `BCEWithLogitsLoss(pos_weight=negative/positive)`, AdamW, cosine annealing,
-  and AUC-based early stopping.
+  and AUC-based early stopping. The full training set is used; negatives are
+  not downsampled.
 
-The model implementation is in `src/`; notebooks retain broader experimental
-variants, including DUSIN-labelled runs.
+The design choices and the alternatives rejected are in
+[PORTFOLIO.md](PORTFOLIO.md#decisions).
 
 ## Retained experiment results
 
-The following are saved validation metadata, not external test-set or
-leaderboard scores. The retained runs use three epochs and full training data
-according to their JSON metadata.
+Saved validation metadata, not external test-set or leaderboard scores. Every
+run uses the full training data, the same stratified 85/15 split (seed 42), and
+at most three epochs. Each configuration was run once.
 
 | Experiment | Validation ROC-AUC | Validation PR-AUC | Evidence |
 |---|---:|---:|---|
-| DCN-V2 + DIEN | 0.7413 | **0.0792** | `results/dcnv2_dien_meta.json` |
+| Random ranking (reference) | 0.5 | 0.0191 | click rate in `notebooks/baseline.ipynb` output |
+| DIN without cross tower | 0.7412 | 0.0779 | `results/din_meta.json` (`notebooks/CAT+DIN.ipynb`) |
 | DCN-V2 + DIN | 0.7402 | 0.0775 | `results/din_dcnv2_meta.json` |
 | DCN-V2 + auto-BST | 0.7403 | 0.0783 | `results/dcnv2_auto_bst_meta.json` |
+| DCN-V2 + DIEN | 0.7413 | **0.0792** | `results/dcnv2_dien_meta.json` |
 | DCN-V2 + DIEN + DUSIN (full) | **0.7417** | 0.0780 | `results/dcnv2_dien_dusin_full_meta.json` |
 
-The highest recorded ROC-AUC and PR-AUC occur in different configurations, so
-this repository does not establish a single winner across both metrics.
+How to read the table:
 
-## Repository layout
-
-```text
-.
-├── src/
-│   ├── data.py                 # Dataset, sequence parsing, and hashing
-│   ├── models.py               # DCN-V2-style and sequence model components
-│   └── train.py                # CLI training, validation, and output metadata
-├── notebooks/                  # Exploratory and extended model experiments
-├── results/                    # Retained JSON run metadata
-├── prior-research/             # Background material
-└── main.py                     # Standalone LightGBM feature-engineering stub
-```
+- The highest ROC-AUC and the highest PR-AUC occur in different
+  configurations, so the repository does not name a single winner.
+- The spread between the DCN-V2 variants is about 0.001 ROC-AUC from one run
+  each; without repeated seeds this is not separable from run-to-run noise.
+- The DIN-without-cross-tower run also types features differently (111
+  continuous / 6 categorical versus 85 / 32 in the DCN-V2 runs), so it is a
+  comparison point rather than a clean ablation of the cross tower.
 
 ## How to run
 
-The raw Parquet files are intentionally absent, so exact result reproduction
-cannot be verified from this checkout alone. With compatible source files and
-the required Python packages installed, run the supported CLI from `src/`:
+The raw Parquet files are not included, so the results cannot be reproduced
+from this checkout alone. The retained results were produced in the notebooks;
+`src/train.py` is a refactor of that path into one CLI and was not re-run after
+the refactor (see `research/RUN_MANIFEST.md`).
+
+Check the CLI without data (needs the packages in `requirements.txt`):
+
+```powershell
+pip install -r requirements.txt
+cd src
+python train.py --help
+```
+
+Train with compatible source files:
 
 ```powershell
 cd src
@@ -93,18 +112,38 @@ python train.py `
 
 Expected input columns include `clicked` (label), `seq` (behaviour sequence),
 and `ID` (submission identifier); other columns are partitioned by the script.
-Install the import-derived package list with `pip install -r requirements.txt`.
-Exact package versions were not recorded. Shared defaults are documented in
-`src/config.py`; see `research/RUN_MANIFEST.md` for the refactor boundary.
+`--seq_backbone` accepts `din`, `dien`, or `bst`. `requirements.txt` lists
+packages derived from the imports; the original package versions were not
+recorded. Shared defaults are in `src/config.py`.
 
 ## Limitations
 
 - No raw data, external test labels, leaderboard result, or trained checkpoint
   is versioned in the repository.
-- The current CLI implements DIN/DIEN/BST selection; some retained DUSIN runs
-  are notebook-based experimental variants.
-- The standalone `main.py` is a LightGBM feature-engineering stub and is not
-  the same end-to-end path as `src/train.py`.
+- One seed per configuration; no confidence intervals, calibration, or
+  Precision/Recall@K are recorded.
+- The validation split is stratified at random, not time-ordered, so it does
+  not test how well the model holds up on later traffic.
+- The CLI implements DIN/DIEN/BST selection; the auto-BST tuning and DUSIN runs
+  exist only in notebooks.
+- Several DCN-V2 notebook logs print `Val nan` for the validation loss while
+  ROC-AUC and PR-AUC are computed normally; the cause was not traced.
+- `main.py` is a standalone LightGBM feature-engineering stub and is not the
+  same path as `src/train.py`.
+
+## Repository layout
+
+```text
+.
+├── src/
+│   ├── data.py                 # Dataset, sequence parsing, and hashing
+│   ├── models.py               # DCN-V2-style and sequence model components
+│   └── train.py                # CLI training, validation, and output metadata
+├── notebooks/                  # Experiments with saved outputs (source of results/)
+├── results/                    # Retained JSON run metadata
+├── prior-research/             # Background material
+└── main.py                     # Standalone LightGBM feature-engineering stub
+```
 
 ## Documentation
 
