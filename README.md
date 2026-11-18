@@ -2,33 +2,24 @@
 
 [한국어](README.ko.md) · [Case study](PORTFOLIO.md)
 
-Predicts whether a user clicks an advertisement from 117 tabular features plus
-the user's recent behaviour sequence, by attaching interchangeable DIN, DIEN,
-or BST sequence encoders to a DCN-V2-style cross/deep network.
+Predicts ad click-through (CTR) from 117 tabular features plus each user's
+recent behaviour sequence. A DCN-V2 (Deep & Cross Network v2) cross/deep
+network is paired with interchangeable sequence encoders: DIN (Deep Interest
+Network), DIEN (Deep Interest Evolution Network), or BST (Behavior Sequence
+Transformer).
 
-**Why it matters.** Clicks are rare: 204,179 of 10,704,179 training rows
-(about 1.91%) are positive, so accuracy says little and the useful question is
-how well a model ranks the few rows that will be clicked. That ranking decides
-which impressions are worth serving.
+**Why it matters.** Only 204,179 of 10,704,179 training rows (about 1.91%) are
+clicks, so accuracy says little. What counts is how well a model ranks the few
+rows that will be clicked, because that ranking decides which impressions to
+serve.
 
-**Result.** DCN-V2 + DIEN reached validation ROC-AUC 0.7413 and PR-AUC 0.0792
-(stratified 85/15 split, seed 42, one run per configuration). The PR-AUC is
-about four times the 0.0191 a random ranking would score at this click rate. A
-DIN model without the cross tower reached 0.7412 / 0.0779, so in these
-single-seed runs the cross tower shows no clear gain; the sequence encoder
+**Result.** DCN-V2 + DIEN reaches validation ROC-AUC 0.7413 and PR-AUC (area
+under the precision-recall curve) 0.0792, about four times the 0.0191 of a
+random ranking (stratified 85/15 split, seed 42, one run per configuration).
+DIN without the cross tower reaches 0.7412 / 0.0779: the sequence encoder
 carries most of the signal.
 
-These are saved validation metrics, not leaderboard or external-test scores.
-The raw data is not included.
-
-## Problem
-
-Given user, inventory, temporal, and historical-sequence features, estimate
-the probability of an advertisement click. The training pipeline handles class
-imbalance with a weighted binary cross-entropy loss and compares models by
-ROC-AUC and PR-AUC on a validation split that keeps the original click rate.
-
-## Analysis flow
+## Approach
 
 ```mermaid
 flowchart LR
@@ -42,27 +33,25 @@ flowchart LR
     G --> H[Submission CSV and run metadata]
 ```
 
-## Implemented approach
-
-- **Feature handling:** continuous values are cast to `float32`; categorical
-  values are mapped from the training split with an out-of-vocabulary index.
-- **Sequence handling:** parsed item histories are truncated/padded to 50 items
-  and hashed into 262,144 buckets to bound embedding vocabulary size.
+- **Features:** casts continuous values to `float32`; maps categorical values
+  from the training split, with an out-of-vocabulary (OOV) index for unseen
+  values.
+- **Sequences:** truncates/pads item histories to 50 items and hashes them into
+  262,144 buckets to bound the embedding vocabulary.
 - **Model:** `DCN_SEQ_Model` combines CrossNetMix layers, a deep MLP tower, and
   a selectable DIN, DIEN, or BST interest encoder.
-- **Training:** a stratified 85/15 train/validation split uses seed 42,
+- **Training:** stratified 85/15 train/validation split (seed 42) on the full
+  training set without negative downsampling;
   `BCEWithLogitsLoss(pos_weight=negative/positive)`, AdamW, cosine annealing,
-  and AUC-based early stopping. The full training set is used; negatives are
-  not downsampled.
+  and AUC-based early stopping. The validation split keeps the original click
+  rate.
 
-The design choices and the alternatives rejected are in
-[PORTFOLIO.md](PORTFOLIO.md#decisions).
+Design choices and rejected alternatives: [PORTFOLIO.md](PORTFOLIO.md#decisions).
 
-## Retained experiment results
+## Results
 
-Saved validation metadata, not external test-set or leaderboard scores. Every
-run uses the full training data, the same stratified 85/15 split (seed 42), and
-at most three epochs. Each configuration was run once.
+Validation metrics from saved run metadata. Every run uses the full training
+data, the same stratified 85/15 split (seed 42), and at most three epochs.
 
 | Experiment | Validation ROC-AUC | Validation PR-AUC | Evidence |
 |---|---:|---:|---|
@@ -73,24 +62,15 @@ at most three epochs. Each configuration was run once.
 | DCN-V2 + DIEN | 0.7413 | **0.0792** | `results/dcnv2_dien_meta.json` |
 | DCN-V2 + DIEN + DUSIN (full) | **0.7417** | 0.0780 | `results/dcnv2_dien_dusin_full_meta.json` |
 
-How to read the table:
-
-- The highest ROC-AUC and the highest PR-AUC occur in different
-  configurations, so the repository does not name a single winner.
-- The spread between the DCN-V2 variants is about 0.001 ROC-AUC from one run
-  each; without repeated seeds this is not separable from run-to-run noise.
-- The DIN-without-cross-tower run also types features differently (111
-  continuous / 6 categorical versus 85 / 32 in the DCN-V2 runs), so it is a
-  comparison point rather than a clean ablation of the cross tower.
+The highest ROC-AUC and the highest PR-AUC come from different configurations,
+so the choice depends on the operating metric.
 
 ## How to run
 
-The raw Parquet files are not included, so the results cannot be reproduced
-from this checkout alone. The retained results were produced in the notebooks;
-`src/train.py` is a refactor of that path into one CLI and was not re-run after
-the refactor (see `research/RUN_MANIFEST.md`).
+Results were produced in the notebooks; `src/train.py` consolidates that
+pipeline into one CLI.
 
-Check the CLI without data (needs the packages in `requirements.txt`):
+Check the CLI without data:
 
 ```powershell
 pip install -r requirements.txt
@@ -110,26 +90,22 @@ python train.py `
   --seq_backbone dien
 ```
 
-Expected input columns include `clicked` (label), `seq` (behaviour sequence),
-and `ID` (submission identifier); other columns are partitioned by the script.
-`--seq_backbone` accepts `din`, `dien`, or `bst`. `requirements.txt` lists
-packages derived from the imports; the original package versions were not
-recorded. Shared defaults are in `src/config.py`.
+Inputs need `clicked` (label), `seq` (behaviour sequence), and `ID`
+(submission identifier); the script partitions the other columns.
+`--seq_backbone` accepts `din`, `dien`, or `bst`. Shared defaults are in
+`src/config.py`.
 
 ## Limitations
 
-- No raw data, external test labels, leaderboard result, or trained checkpoint
-  is versioned in the repository.
-- One seed per configuration; no confidence intervals, calibration, or
-  Precision/Recall@K are recorded.
-- The validation split is stratified at random, not time-ordered, so it does
-  not test how well the model holds up on later traffic.
-- The CLI implements DIN/DIEN/BST selection; the auto-BST tuning and DUSIN runs
-  exist only in notebooks.
-- Several DCN-V2 notebook logs print `Val nan` for the validation loss while
-  ROC-AUC and PR-AUC are computed normally; the cause was not traced.
-- `main.py` is a standalone LightGBM feature-engineering stub and is not the
-  same path as `src/train.py`.
+- Validation metrics only; no leaderboard, external-test, or online A/B result.
+- Raw data and trained checkpoints not included, so results cannot be reproduced from this checkout alone.
+- Single seed per configuration; ROC-AUC differences of about 0.001 are within run-to-run noise. No confidence intervals, calibration, or Precision/Recall@K.
+- Random stratified split, not time-ordered; performance on later traffic is untested.
+- The no-cross-tower DIN run types features differently (111 continuous / 6 categorical vs 85 / 32), so it is a comparison point, not a clean ablation.
+- `src/train.py` was not re-run after the refactor; auto-BST tuning and DUSIN runs exist only in notebooks.
+- `requirements.txt` is derived from imports; original package versions are unpinned.
+- Several DCN-V2 notebook logs print `Val nan` for validation loss while ROC-AUC/PR-AUC compute normally; cause not traced.
+- `main.py` is a standalone LightGBM feature-engineering stub, separate from `src/train.py`.
 
 ## Repository layout
 
@@ -141,8 +117,7 @@ recorded. Shared defaults are in `src/config.py`.
 │   └── train.py                # CLI training, validation, and output metadata
 ├── notebooks/                  # Experiments with saved outputs (source of results/)
 ├── results/                    # Retained JSON run metadata
-├── prior-research/             # Background material
-└── main.py                     # Standalone LightGBM feature-engineering stub
+└── prior-research/             # Background material
 ```
 
 ## Documentation

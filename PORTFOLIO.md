@@ -4,81 +4,79 @@
 
 ## At a glance
 
-CTR prediction needs both tabular context—user, inventory, and time features—and the sequence of what a user has recently interacted with. This project combines a DCN-V2-style cross/deep tower with interchangeable DIN, DIEN, and BST sequence encoders to test both forms of signal together.
+Click-through-rate (CTR) prediction needs both tabular context (user, inventory, and time features) and the sequence of what a user recently interacted with. This project pairs a DCN-V2 (Deep & Cross Network v2) cross/deep tower with interchangeable DIN (Deep Interest Network), DIEN (Deep Interest Evolution Network), and BST (Behavior Sequence Transformer) encoders to test both signals together.
 
-In the retained validation metadata, DCN-V2 + DIEN reaches ROC-AUC 0.7413 and PR-AUC 0.0792, about four times the 0.0191 PR-AUC of a random ranking at this click rate. A DUSIN-labelled extension reaches ROC-AUC 0.7417 and PR-AUC 0.0780. Because the best ROC-AUC and PR-AUC belong to different configurations, the project does not claim one universal winner. A DIN model without the cross tower reaches 0.7412 / 0.0779, which is the most useful finding for the next iteration: in these single-seed runs the cross tower adds no clear gain.
+On validation, DCN-V2 + DIEN reaches ROC-AUC 0.7413 and PR-AUC (area under the precision-recall curve) 0.0792, about four times the 0.0191 PR-AUC of a random ranking at this click rate. A DUSIN-labelled extension reaches ROC-AUC 0.7417 and PR-AUC 0.0780, so the best configuration depends on the metric. A DIN model without the cross tower reaches 0.7412 / 0.0779; the most useful finding for the next iteration is that the cross tower adds no clear gain in these runs.
 
 ## The challenge
 
-The project addresses two separate problems: learning nonlinear interactions among tabular features and representing variable-length behaviour histories within a fixed memory budget. The training file is large and imbalanced: the saved output of `notebooks/baseline.ipynb` records 10,704,179 rows, 119 columns, and 204,179 clicks (about 1.91%).
+Two problems: learning nonlinear interactions among tabular features, and representing variable-length behaviour histories within a fixed memory budget. The training file is large and imbalanced: 10,704,179 rows, 119 columns, and 204,179 clicks (about 1.91%), per the saved output of `notebooks/baseline.ipynb`.
 
-CrossNetMix supplies explicit feature crosses through low-rank, gated experts; a parallel MLP learns broader nonlinear patterns. Their outputs are combined with the sequence-interest vector only in the final prediction head. The sequence encoders are deliberately comparable within the same tabular backbone:
+CrossNetMix supplies explicit feature crosses through low-rank, gated experts; a parallel MLP learns broader nonlinear patterns. Their outputs join the sequence-interest vector only in the final prediction head. The sequence encoders swap within the same tabular backbone:
 
 - **DIN** attends from the current candidate to historical item embeddings.
-- **DIEN** first passes the history through a GRU, then attends over evolving interest states.
+- **DIEN** passes the history through a GRU (gated recurrent unit), then attends over evolving interest states.
 - **BST** adds positional encoding and a Transformer encoder before attention pooling.
 
 ## Decisions
 
-**1. How to represent the behaviour sequence.**
-Options: feed the raw comma-separated values into an LSTM as numbers (the first notebook, `baseline.ipynb`, does this); embed every distinct item ID; or truncate to the most recent 50 items and hash IDs into 262,144 buckets.
-Choice: truncation plus hashing, with left padding so batches have a fixed length and a guard so attention over an empty sequence does not produce `NaN`.
+**1. Representing the behaviour sequence.**
+Options: feed the raw comma-separated values into an LSTM as numbers (the first notebook, `baseline.ipynb`); embed every distinct item ID; or truncate to the most recent 50 items and hash IDs into 262,144 buckets.
+Choice: truncation plus hashing, with left padding for fixed-length batches and a guard against `NaN` from attention over an empty sequence.
 Why: items are categories, not magnitudes, so they need embeddings; a full-ID vocabulary has no memory bound on a 10.7M-row file, while hashing does.
-Cost: hash collisions merge unrelated items, and history older than 50 events is dropped. Neither effect was measured.
+Cost: hash collisions merge unrelated items, and history older than 50 events is dropped; neither effect was measured.
 
-**2. How to handle the 1.91% click rate.**
-Options: downsample negatives (the baseline notebook keeps clicks and twice as many non-clicks, 612,537 rows); or keep all rows and weight positives in the loss.
+**2. Handling the 1.91% click rate.**
+Options: downsample negatives (the baseline notebook keeps clicks plus twice as many non-clicks, 612,537 rows); or keep all rows and weight positives in the loss.
 Choice: full data with `BCEWithLogitsLoss(pos_weight = negative / positive)` (51.4 on the training split).
-Why: the validation split then keeps the real click rate, so PR-AUC is read against the true base rate instead of an artificial 33%.
-Cost: training on the full file limited runs to three epochs, and the weighted loss shifts predicted probabilities, so the scores are rankings, not calibrated click probabilities.
+Why: validation keeps the real click rate, so PR-AUC is read against the true base rate instead of an artificial 33%.
+Cost: full-file training limited runs to three epochs, and the weighted loss shifts predicted probabilities, so scores are rankings, not calibrated click probabilities.
 
-**3. How to compare encoders fairly.**
-Options: tune each architecture separately; or hold the tabular backbone, split, seed, and training budget fixed and swap only the sequence encoder.
+**3. Comparing encoders fairly.**
+Options: tune each architecture separately; or fix the tabular backbone, split, seed, and training budget and swap only the sequence encoder.
 Choice: the fixed-backbone swap, plus one run without the cross tower as a comparison point.
 Why: it isolates what each history representation adds on top of the same tabular features.
-Cost: one seed per configuration, so differences of about 0.001 ROC-AUC cannot be separated from noise; the no-cross-tower run also types features differently, so it is not a clean ablation.
+Cost: one seed per configuration (see Limitations).
 
-**4. Which metric decides.**
+**4. Choosing the deciding metric.**
 Options: report one metric and name a winner; or report ROC-AUC and PR-AUC side by side.
 Choice: both, with ROC-AUC for early stopping and PR-AUC as the reference for positive-class ranking.
 Why: the best configuration differs by metric, and which matters depends on whether the downstream use is overall ranking or precision among top candidates.
 Cost: no single recommended model.
 
-## Data boundary and training protocol
+## Data and training protocol
 
-The source Parquet files and data card are not versioned, so provenance and collection period are not stated. The row and click counts above come from a saved notebook output, not from data in the repository. The maintained code establishes the observable interface: `clicked` is the default label, `seq` the behaviour sequence, and `ID` the submission identifier. Continuous fields are converted to `float32` and zero-filled. Category mappings are fit on the training split only, and unseen validation/test values use an OOV index.
+Inputs: `clicked` (label), `seq` (behaviour sequence; bracketed comma lists and numeric strings are both parsed), and `ID` (submission identifier, kept in the submission file). Continuous fields are converted to `float32` and zero-filled. Category mappings are fit on the training split only; unseen validation/test values use an out-of-vocabulary (OOV) index.
 
-The supported CLI uses seed 42 and a stratified 85/15 train/validation split. It applies `BCEWithLogitsLoss` with `pos_weight = negative / positive`, AdamW, cosine annealing, and ROC-AUC-based early stopping. The principal saved runs record full-data training, batch size 512, learning rate 0.001, dropout 0.2, and three epochs.
+The CLI (`src/train.py`) uses seed 42 and a stratified 85/15 train/validation split, `BCEWithLogitsLoss` with `pos_weight = negative / positive`, AdamW, cosine annealing, and ROC-AUC-based early stopping, and writes predictions plus run metadata. The principal saved runs use full-data training (`sample_subset=1.0`), batch size 512, learning rate 0.001, dropout 0.2, and three epochs.
 
-## Retained validation comparison
+## Validation results
 
-| Saved run | ROC-AUC | PR-AUC | Reading of the result |
+| Saved run | ROC-AUC | PR-AUC | Reading |
 |---|---:|---:|---|
 | Random ranking (reference) | 0.5 | 0.0191 | equals the click rate |
 | DIN without cross tower | 0.7412 | 0.0779 | comparison point without DCN-V2 |
 | DCN-V2 + DIN | 0.7402 | 0.0775 | attention-based sequence encoder |
 | DCN-V2 + auto-BST | 0.7403 | 0.0783 | Transformer-based sequence encoder |
-| DCN-V2 + DIEN | 0.7413 | **0.0792** | highest retained PR-AUC |
-| DCN-V2 + DIEN + DUSIN (full) | **0.7417** | 0.0780 | highest retained ROC-AUC |
+| DCN-V2 + DIEN | 0.7413 | **0.0792** | highest PR-AUC |
+| DCN-V2 + DIEN + DUSIN (full) | **0.7417** | 0.0780 | highest ROC-AUC |
 
-These are saved validation metrics, not external-test or leaderboard results. There are no repeated-seed confidence intervals, calibration results, or ranking-at-K business metrics. DIEN is therefore a useful reference configuration for PR-AUC, while the model choice should still follow the operating objective.
+DIEN is the reference configuration for PR-AUC; the final model choice should follow the operating objective. The no-cross-tower DIN run is within 0.0001 ROC-AUC of DCN-V2 + DIEN.
 
-## What the result does not show
+## Limitations
 
-- It is not a leaderboard, external-test, or online A/B result.
-- The split is random-stratified, not time-ordered, so it does not show performance on later traffic.
-- It does not show that the cross tower helps: the no-cross-tower DIN run is within 0.0001 ROC-AUC of the best DCN-V2 + DIEN run.
-- Several DCN-V2 notebook logs print `Val nan` for the validation loss while ROC-AUC and PR-AUC are computed normally; the cause was not traced.
-
-## What is implemented—and what is archival
-
-`src/train.py` is the maintained path: it loads files, splits data, builds training-only category maps, trains a selected sequence backbone, and writes predictions plus run metadata. It makes DIN/DIEN/BST comparisons repeatable from the same CLI contract. The retained results were produced in the notebooks; the CLI is a refactor of that code and was not re-run afterwards.
-
-`main.py` is a separate LightGBM feature-engineering stub. The auto-BST and DUSIN experiments are notebook-only extensions and are not equivalent to the maintained CLI path. The documentation keeps this distinction explicit rather than presenting all notebook experiments as one deployed system.
+- Validation metrics only; no leaderboard, external-test, or online A/B result.
+- Raw Parquet files and data card not included; provenance and collection period are not stated.
+- Single seed per configuration; ROC-AUC differences of about 0.001 are within noise. No confidence intervals, calibration, or ranking-at-K business metrics.
+- Random stratified split, not time-ordered; performance on later traffic is untested.
+- The no-cross-tower DIN run types features differently, so it is a comparison point, not a clean ablation.
+- Results come from the notebooks; `src/train.py` refactors that code and was not re-run. Auto-BST and DUSIN exist only in notebooks.
+- Several DCN-V2 notebook logs print `Val nan` for validation loss while ROC-AUC/PR-AUC compute normally; cause not traced.
+- `main.py` is a standalone LightGBM feature-engineering stub, separate from `src/train.py`.
 
 ## Next iteration
 
-The immediate improvement is a complete experiment manifest: data version, split counts, package versions, hardware, and artefact paths. Time-ordered evaluation, repeated seeds, calibration, and Precision/Recall@K would turn the current modelling prototype into stronger evidence for an advertising decision workflow. A matched ablation—same feature typing, with and without the cross tower, over several seeds—would settle whether DCN-V2 earns its cost here.
+A complete experiment manifest (data version, split counts, package versions, hardware, artefact paths). Time-ordered evaluation, repeated seeds, calibration, and Precision/Recall@K to support an advertising decision. A matched ablation (same feature typing, with and without the cross tower, several seeds) to settle whether DCN-V2 earns its cost here.
 
 ## Evidence
 
