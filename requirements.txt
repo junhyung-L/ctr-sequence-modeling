@@ -1,7 +1,8 @@
-# Import-derived package list. Original package versions were not recorded.
-numpy
-pandas
-pyarrow
-scikit-learn
-torch
-lightgbm
+# Pinned to the environment used for the 2026-11 review; original run versions were not recorded.
+# The notebooks ran on Python 3.12.11 (notebook metadata); these pins were checked on Python 3.13.2
+# with scripts/smoke_test.py (synthetic data, CPU).
+numpy==2.4.2
+pandas==3.0.1
+pyarrow==23.0.1
+scikit-learn==1.6.1
+torch==2.13.0

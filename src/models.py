@@ -140,6 +140,10 @@ class BSTBackbone(nn.Module):
         K0 = self.pos(K0)
         key_pad_mask = (seq_ids == PAD_ID)     # True for PAD (B,L)
         H = self.enc(K0, src_key_padding_mask=key_pad_mask)  # (B,L,D)
+        # In eval mode the Transformer fast path returns NaN for a sequence whose
+        # positions are all padding; NaN * alpha(=0) would still poison `interest`.
+        # Padded positions never carry information, so zero them explicitly.
+        H = H.masked_fill(key_pad_mask.unsqueeze(-1), 0.0)
         logits_w = self.att(q_vec, H)          # (B,L)
         neg = torch.finfo(logits_w.dtype).min
         logits_w = logits_w.masked_fill(key_pad_mask, neg)

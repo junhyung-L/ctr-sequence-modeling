@@ -29,7 +29,7 @@ flowchart TD
 | `src/config.py` | Preserves and centralizes default experiment settings. |
 | `notebooks/` | Retains experimental variants and executed outputs. |
 | `results/` | Stores compact metadata for recorded validation runs. |
-| `main.py` | Contains a separate LightGBM stub, not the supported deep-learning CLI path. |
+| `scripts/smoke_test.py` | Runs `src/train.py` end to end on tiny synthetic Parquet files (CLI check only). |
 
 ## Data and evaluation boundary
 

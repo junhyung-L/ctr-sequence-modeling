@@ -70,9 +70,13 @@ so the choice depends on the operating metric.
 
 ## How to run
 
-Results were produced in the notebooks; `src/train.py` consolidates that
-pipeline into one CLI and has not been re-run since. The raw Parquet files and
-trained checkpoints are not included.
+Results were produced in the notebooks (Python 3.12.11). `src/train.py`
+consolidates that pipeline into one CLI; it has not been re-run on the original
+data, but `python scripts\smoke_test.py` runs it end to end (one epoch per
+backbone) on tiny synthetic Parquet files to check that the CLI executes. The
+raw Parquet files and trained checkpoints are not included. `requirements.txt`
+pins the review environment (Python 3.13.2); the original package versions were
+not recorded.
 
 ```powershell
 pip install -r requirements.txt
@@ -105,6 +109,7 @@ Inputs need `clicked` (label), `seq` (behavior sequence), and `ID`
 │   ├── data.py                 # Dataset, sequence parsing, and hashing
 │   ├── models.py               # DCN-V2-style and sequence model components
 │   └── train.py                # CLI training, validation, and output metadata
+├── scripts/smoke_test.py       # Synthetic-data end-to-end check of the CLI
 ├── notebooks/                  # Experiments with saved outputs (source of results/)
 ├── results/                    # JSON run metadata
 └── prior-research/             # Background material

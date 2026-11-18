@@ -229,14 +229,18 @@ def main(args):
         # Validation
         model.eval()
         va_loss = 0.0
+        n_nonfinite = 0
         ys, ps = [], []
         with torch.no_grad():
             for xc, cats, seq, y in dl_va:
                 xc, cats_dev, seq = move_features_to_device(xc, cats, seq, device)
-                with autocast(enabled=(device.type == "cuda")):
-                    logits = model(xc, cats_dev, seq)
-                    loss = criterion(logits, y.to(device))
-                    
+                # Evaluate in float32: under fp16 autocast, eval-mode BatchNorm
+                # (running statistics) can push raw-scale outliers past the fp16
+                # range, giving inf/NaN logits and a NaN validation loss.
+                logits = model(xc, cats_dev, seq).float()
+                loss = criterion(logits, y.to(device))
+                n_nonfinite += int((~torch.isfinite(logits)).sum().item())
+
                 p = logits_to_probabilities(logits)
                 va_loss += loss.item() * len(y)
                 ys.append(y.numpy())
@@ -248,6 +252,8 @@ def main(args):
         auc = roc_auc_score(y_true, y_prob)
         prauc = average_precision_score(y_true, y_prob)
         print(f"Epoch {epoch:02d} | Train Loss: {tr_loss:.5f} | Val Loss: {va_loss:.5f} | AUC: {auc:.6f} | PR-AUC: {prauc:.6f}")
+        if n_nonfinite:
+            print(f"  Warning: {n_nonfinite} non-finite validation logits (probabilities clipped by nan_to_num).")
 
         if auc > best_auc + 1e-5:
             best_auc, final_prauc, final_epoch = auc, prauc, epoch
@@ -269,8 +275,7 @@ def main(args):
     with torch.no_grad():
         for xc, cats, seq in dl_te:
             xc, cats_dev, seq = move_features_to_device(xc, cats, seq, device)
-            with autocast(enabled=(device.type == "cuda")):
-                logits = model(xc, cats_dev, seq)
+            logits = model(xc, cats_dev, seq).float()  # float32 inference, as in validation
             p = logits_to_probabilities(logits)
             probs.append(p)
     probs = np.concatenate(probs)

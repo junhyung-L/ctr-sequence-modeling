@@ -48,7 +48,7 @@ ROC-AUC 최고값과 PR-AUC 최고값이 서로 다른 설정에서 나오므로
 
 ## 실행
 
-결과는 노트북에서 만들었습니다. `src/train.py`는 그 파이프라인을 하나의 CLI로 정리한 것이며, 정리 후에는 다시 실행하지 않았습니다. 원본 Parquet 파일과 학습된 checkpoint는 저장소에 없습니다.
+결과는 노트북(Python 3.12.11)에서 만들었습니다. `src/train.py`는 그 파이프라인을 하나의 CLI로 정리한 것으로, 원본 데이터로 다시 실행하지는 않았지만 `python scripts\smoke_test.py`가 작은 합성 Parquet 파일로 백본별 1 epoch를 끝까지 실행해 CLI 동작을 확인합니다. 원본 Parquet 파일과 학습된 checkpoint는 저장소에 없습니다. `requirements.txt`는 점검 환경(Python 3.13.2) 버전으로 고정했으며, 원래 실행 때의 패키지 버전은 기록되어 있지 않습니다.
 
 ```powershell
 pip install -r requirements.txt
@@ -78,6 +78,7 @@ python train.py `
 │   ├── data.py                 # 데이터셋, 시퀀스 파싱, 해싱
 │   ├── models.py               # DCN-V2 스타일·시퀀스 모델 구성 요소
 │   └── train.py                # CLI 학습, 검증, 출력 메타데이터
+├── scripts/smoke_test.py       # 합성 데이터로 CLI 전체 실행 점검
 ├── notebooks/                  # 저장된 출력이 있는 실험 (results/의 출처)
 ├── results/                    # JSON 실행 메타데이터
 └── prior-research/             # 배경 자료
