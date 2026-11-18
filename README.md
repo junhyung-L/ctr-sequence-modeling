@@ -14,6 +14,8 @@ four times the 0.0191 of a random ranking. DIN without the cross tower reaches
 0.7412 / 0.0779: in these single-seed runs the cross tower adds no measurable
 gain.
 
+**Role.** I wrote the code, analysis, and documentation in this repository.
+
 **Scope.** One random, non-temporal validation split with one seed; no
 leaderboard or online test, and ROC-AUC gaps near 0.001 are noise. Data and
 checkpoints not included; `results/*_meta.json` holds each run's metrics, and
@@ -99,6 +101,7 @@ Inputs need `clicked` (label), `seq` (behavior sequence), and `ID`
 - Validation metrics only; no leaderboard, external-test, or online A/B result.
 - One seed per configuration; ROC-AUC differences of about 0.001 are within run-to-run noise.
 - Random stratified split, not time-ordered; performance on later traffic is untested.
+- Early stopping and the reported score use the same validation split, so the reported best-epoch score is optimistically selected.
 - Comparison conditions are not matched: the no-cross-tower DIN run types features differently (111 continuous / 6 categorical vs 85 / 32), so it is a comparison point, not an ablation.
 
 ## Repository layout
@@ -120,3 +123,7 @@ Inputs need `clicked` (label), `seq` (behavior sequence), and `ID`
 - [Portfolio case study](PORTFOLIO.md)
 - [Architecture](docs/ARCHITECTURE.md)
 - [Run manifest](research/RUN_MANIFEST.md)
+
+## License
+
+No open-source license: the code and documents are public for review; reuse requires permission.

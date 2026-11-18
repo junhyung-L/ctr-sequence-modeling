@@ -142,13 +142,16 @@ def main(args):
     if target_name is None and "l_feat_14" in all_lfeats:
         target_name = "l_feat_14"
 
+    # Split (once; the same train/validation rows are used for cardinality checks and training)
+    tr, va = train_test_split(train, test_size=args.test_size, random_state=args.seed, stratify=train[args.label_col])
+    del train; gc.collect()
+
     cand_cats = fixed_cats.copy()
-    tr_tmp, va_tmp = train_test_split(train, test_size=args.test_size, random_state=args.seed, stratify=train[args.label_col])
     for c in all_lfeats:
         try:
-            nunq = max(tr_tmp[c].nunique(dropna=True), va_tmp[c].nunique(dropna=True))
+            nunq = max(tr[c].nunique(dropna=True), va[c].nunique(dropna=True))
         except Exception:
-            nunq = pd.concat([tr_tmp[c], va_tmp[c]], axis=0).nunique(dropna=True)
+            nunq = pd.concat([tr[c], va[c]], axis=0).nunique(dropna=True)
         if nunq <= args.cat_card_max:
             cand_cats.append(c)
 
@@ -157,10 +160,6 @@ def main(args):
 
     cont_cols = [c for c in base_cols if c not in cand_cats]
     print(f"[1.1] target_name={target_name} | continuous={len(cont_cols)} | categorical={len(cand_cats)}")
-
-    # Split
-    tr, va = train_test_split(train, test_size=args.test_size, random_state=args.seed, stratify=train[args.label_col])
-    del train; gc.collect()
 
     # Categorical maps
     cat_maps, cat_cards = {}, {}
